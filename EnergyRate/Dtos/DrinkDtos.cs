@@ -7,9 +7,11 @@
         string Name,
         string Flavor,
         decimal CaffeineMgPer100ml,
-        double VolumeMl,
+        int VolumeMl,
         decimal Price,
         DateTime CreatedAt,
+        double? AverageRating,
+        int ReviewCount,
         Dictionary<string, string> Links
     );
 
@@ -17,7 +19,7 @@
         string Name,
         string Flavor,
         decimal CaffeineMgPer100ml,
-        double VolumeMl,
+        int VolumeMl,
         decimal Price
     );
 
@@ -25,7 +27,7 @@
         string Name,
         string Flavor,
         decimal CaffeineMgPer100ml,
-        double VolumeMl,
+        int VolumeMl,
         decimal Price
     );
 

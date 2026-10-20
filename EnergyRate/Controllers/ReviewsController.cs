@@ -12,13 +12,13 @@ namespace EnergyRate.Controllers
     {
         private readonly AppDbContext _db;
         public ReviewsController(AppDbContext db) => _db = db;
-        private ReviewResponse ToResponse(Review review) => new(
+        private ReviewResponse ToResponse(Review review, int brandId) => new(
             review.Id, review.DrinkId, review.UserId, review.Rating, review.Comment, review.CreatedAt,
             new Dictionary<string, string>
             {
-                ["self"] = Url.Action(nameof(GetOne), new { brandId = review.Drink!.BrandId, drinkId = review.DrinkId, reviewId = review.Id })!,
-                ["drink"] = Url.Action("GetOne", "Drinks", new { brandId = review.Drink!.BrandId, drinkId = review.DrinkId })!,
-                ["brand"] = Url.Action("GetOne", "Brands", new { brandId = review.Drink!.BrandId })!
+                ["self"] = Url.Action(nameof(GetOne), new { brandId, drinkId = review.DrinkId, reviewId = review.Id })!,
+                ["drink"] = Url.Action("GetOne", "Drinks", new { brandId, drinkId = review.DrinkId })!,
+                ["brand"] = Url.Action("GetOne", "Brands", new { brandId })!
             });
         private async Task<bool> DrinkExists(int brandId, int drinkId) =>
             await _db.Drinks.AnyAsync(d => d.Id == drinkId && d.BrandId == brandId);
@@ -54,7 +54,7 @@ namespace EnergyRate.Controllers
 
             return Ok(new PagedResult<ReviewResponse>
             {
-                Items = items.Select(ToResponse).ToList(),
+                Items = items.Select(r => ToResponse(r, brandId)).ToList(),
                 Page = query.Page,
                 PageSize = query.PageSize,
                 TotalItems = total
@@ -62,6 +62,9 @@ namespace EnergyRate.Controllers
         }
 
         [HttpGet("{reviewId:int}", Name = "GetReviewById")]
+        [ProducesResponseType(typeof(ReviewResponse), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
         public async Task<ActionResult<ReviewResponse>> GetOne(int brandId, int drinkId, int reviewId)
         {
             if (!await DrinkExists(brandId, drinkId))
@@ -77,10 +80,15 @@ namespace EnergyRate.Controllers
             {
                 return NotFound(new { message = $"Review with ID {reviewId} not found for Drink ID {drinkId}" });
             }
-            return Ok(ToResponse(review));
+            return Ok(ToResponse(review, brandId));
         }
 
         [HttpPost]
+        [ProducesResponseType(typeof(ReviewResponse), StatusCodes.Status201Created)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
         public async Task<ActionResult<ReviewResponse>> Create(int brandId, int drinkId, [FromBody] ReviewCreateRequest request)
         {
             if (!await DrinkExists(brandId, drinkId))
@@ -91,13 +99,9 @@ namespace EnergyRate.Controllers
             {
                 return UnprocessableEntity(new { message = "Rating must be between 1 and 5." });
             }
-            if (string.IsNullOrWhiteSpace(request.Comment))
-            {
-                return BadRequest(new { message = "Comment cannot be empty." });
-            }
             if (!await _db.Users.AnyAsync(u => u.Id == request.UserId))
             {
-                return UnprocessableEntity(new { message = $"User with ID {request.UserId} not found." });
+                return NotFound(new { message = $"User with ID {request.UserId} not found." });
             }
 
             var alreadyReviewed = await _db.Reviews.AnyAsync(r => r.DrinkId == drinkId && r.UserId == request.UserId);
@@ -115,10 +119,14 @@ namespace EnergyRate.Controllers
             };
             _db.Reviews.Add(review);
             await _db.SaveChangesAsync();
-            return CreatedAtAction(nameof(GetOne), new { brandId, drinkId, reviewId = review.Id }, ToResponse(review));
+            return CreatedAtAction(nameof(GetOne), new { brandId, drinkId, reviewId = review.Id }, ToResponse(review, brandId));
         }
 
         [HttpPut("{reviewId:int}")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
         public async Task<ActionResult<ReviewResponse>> Update(int brandId, int drinkId, int reviewId, [FromBody] ReviewUpdateRequest request)
         {
             if (!await DrinkExists(brandId, drinkId))
@@ -145,6 +153,8 @@ namespace EnergyRate.Controllers
         }
 
         [HttpDelete("{reviewId:int}")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> Delete(int brandId, int drinkId, int reviewId)
         {
             if (!await DrinkExists(brandId, drinkId))

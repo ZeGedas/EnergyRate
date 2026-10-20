@@ -9,8 +9,8 @@
         Dictionary<string, string> Links
     );
 
-    public record BrandCreateRequest(int Id, string Name, string Country, string? Description);
-    public record BrandUpdateRequest(int Id, string Name, string Country, string? Description);
+    public record BrandCreateRequest(string Name, string Country, string? Description);
+    public record BrandUpdateRequest(string Name, string Country, string? Description);
 
     public class BrandQuery : PaginationQuery
     {

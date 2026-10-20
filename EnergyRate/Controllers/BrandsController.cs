@@ -25,6 +25,9 @@ namespace EnergyRate.Controllers
             });
 
         [HttpGet]
+        [ProducesResponseType(typeof(PagedResult<BrandResponse>), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
         public async Task<ActionResult<PagedResult<BrandResponse>>> GetList([FromQuery] BrandQuery query)
         {
             var brandsQuery = _db.Brands.AsQueryable();
@@ -50,6 +53,9 @@ namespace EnergyRate.Controllers
         }
 
         [HttpGet("{brandId:int}", Name = "GetBrandById")]
+        [ProducesResponseType(typeof(BrandResponse), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
         public async Task<ActionResult<BrandResponse>> GetOne (int brandId)
         {
             var brand = await _db.Brands.FindAsync(brandId);
@@ -58,6 +64,10 @@ namespace EnergyRate.Controllers
         }
 
         [HttpPost]
+        [ProducesResponseType(typeof(BrandResponse), StatusCodes.Status201Created)]
+        [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
         public async Task<ActionResult<BrandResponse>> Create([FromBody] BrandCreateRequest request)
         {
             if (string.IsNullOrWhiteSpace(request.Name) || string.IsNullOrWhiteSpace(request.Country))
@@ -67,10 +77,6 @@ namespace EnergyRate.Controllers
             if (await _db.Brands.AnyAsync(b => b.Name.ToLower() == request.Name.ToLower()))
             {
                 return Conflict(new { message = $"Brand with name '{request.Name}' already exists." });
-            }
-            if (await _db.Brands.AnyAsync(b => b.Id == request.Id))
-            {
-                return Conflict(new { message = $"Brand with ID {request.Id} already exists." });
             }
 
             var brand = new Brand
@@ -86,6 +92,10 @@ namespace EnergyRate.Controllers
         }
 
         [HttpPut("{brandId:int}")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
         public async Task<IActionResult> Update(int brandId, [FromBody] BrandUpdateRequest request)
         {
             var brand = await _db.Brands.FindAsync(brandId);
@@ -93,6 +103,10 @@ namespace EnergyRate.Controllers
             if (string.IsNullOrWhiteSpace(request.Name) || string.IsNullOrWhiteSpace(request.Country))
             {
                 return UnprocessableEntity(new { message = "Name and Country are required fields." });
+            }
+            if (await _db.Brands.AnyAsync(b => b.Id != brandId && b.Name.ToLower() == request.Name.ToLower()))
+            {
+                return Conflict(new { message = $"Brand with name '{request.Name}' already exists." });
             }
             brand.Name = request.Name;
             brand.Country = request.Country;
@@ -102,6 +116,8 @@ namespace EnergyRate.Controllers
         }
 
         [HttpDelete("{brandId:int}")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> Delete(int brandId)
         {
             var brand = await _db.Brands.FindAsync(brandId);

@@ -3,6 +3,7 @@ using EnergyRate.Dtos;
 using EnergyRate.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace EnergyRate.Controllers
 {
@@ -14,9 +15,23 @@ namespace EnergyRate.Controllers
         private readonly AppDbContext _db;
         public DrinksController(AppDbContext db) => _db = db;
 
-        private DrinkResponse ToResponse(Drink drink) => new(
+        private record DrinkProjection(
+            int Id,
+            int BrandId,
+            string BrandName,
+            string Name,
+            string Flavor,
+            decimal CaffeineMgPer100ml,
+            int VolumeMl,
+            decimal Price,
+            DateTime CreatedAt,
+            double? AverageRating,
+            int ReviewCount
+        );
+
+        private DrinkResponse ToResponse(DrinkProjection drink) => new(
             drink.Id, drink.BrandId, drink.Name, drink.Flavor, drink.CaffeineMgPer100ml,
-            drink.VolumeMl, drink.Price, drink.CreatedAt,
+            drink.VolumeMl, drink.Price, drink.CreatedAt, drink.AverageRating, drink.ReviewCount,
             new Dictionary<string, string>
             {
                 ["self"] = Url.Action(nameof(GetOne), new { brandId = drink.BrandId, drinkId = drink.Id })!,
@@ -24,9 +39,26 @@ namespace EnergyRate.Controllers
                 ["reviews"] = Url.Action("GetList", "Reviews", new { brandId = drink.BrandId, drinkId = drink.Id }) ?? ""
             });
 
+        private IQueryable<DrinkProjection> Project(IQueryable<Drink> q) => q.Select(drink => new DrinkProjection(
+            drink.Id,
+            drink.BrandId,
+            drink.Brand!.Name,
+            drink.Name,
+            drink.Flavor,
+            drink.CaffeineMgPer100ml,
+            drink.VolumeMl,
+            drink.Price,
+            drink.CreatedAt,
+            drink.Reviews.Average(r => (double?)r.Rating),
+            drink.Reviews.Count()
+        ));
+
         private async Task<bool> BrandExists(int brandId) => await _db.Brands.AnyAsync(b => b.Id == brandId);
 
         [HttpGet]
+        [ProducesResponseType(typeof(PagedResult<DrinkResponse>), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
         public async Task<ActionResult<PagedResult<DrinkResponse>>> GetList(int brandId, [FromQuery] DrinkQuery query)
         {
             if (!await BrandExists(brandId))
@@ -47,14 +79,14 @@ namespace EnergyRate.Controllers
             }
 
             var total = await drinksQuery.CountAsync();
-            var items = await drinksQuery
+            var raw = await Project(drinksQuery.OrderBy(d => d.Name))
                 .Skip((query.Page - 1) * query.PageSize)
                 .Take(query.PageSize)
                 .ToListAsync();
 
             return Ok(new PagedResult<DrinkResponse>
             {
-                Items = items.Select(ToResponse).ToList(),
+                Items = raw.Select(ToResponse).ToList(),
                 Page = query.Page,
                 PageSize = query.PageSize,
                 TotalItems = total
@@ -62,6 +94,9 @@ namespace EnergyRate.Controllers
         }
 
         [HttpGet("{drinkId:int}", Name = "GetDrinkById")]
+        [ProducesResponseType(typeof(DrinkResponse), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
         public async Task<ActionResult<DrinkResponse>> GetOne(int brandId, int drinkId)
         {
             if (!await BrandExists(brandId))
@@ -69,16 +104,22 @@ namespace EnergyRate.Controllers
                 return NotFound(new { message = $"Brand with ID {brandId} not found" });
             }
 
-            var drink = await _db.Drinks.FirstOrDefaultAsync(d => d.Id == drinkId && d.BrandId == brandId);
-            if (drink is null)
+            var raw = await Project(_db.Drinks.Where(d => d.Id == drinkId && d.BrandId == brandId)).FirstOrDefaultAsync();
+
+            if (raw is null)
             {
                 return NotFound(new { message = $"Drink with ID {drinkId} not found" });
             }
 
-            return Ok(ToResponse(drink));
+            return Ok(ToResponse(raw));
         }
 
         [HttpPost]
+        [ProducesResponseType(typeof(DrinkResponse), StatusCodes.Status201Created)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
         public async Task<ActionResult<DrinkResponse>> Create(int brandId, [FromBody] DrinkCreateRequest request)
         {
             if (!await BrandExists(brandId))
@@ -124,10 +165,29 @@ namespace EnergyRate.Controllers
             };
             _db.Drinks.Add(drink);
             await _db.SaveChangesAsync();
-            return CreatedAtAction(nameof(GetOne), new { brandId, drinkId = drink.Id }, ToResponse(drink));
+
+            var projection = new DrinkProjection(
+                drink.Id,
+                drink.BrandId,
+                (await _db.Brands.FindAsync(drink.BrandId))!.Name,
+                drink.Name,
+                drink.Flavor,
+                drink.CaffeineMgPer100ml,
+                drink.VolumeMl,
+                drink.Price,
+                drink.CreatedAt,
+                null,
+                0
+            );
+
+            return CreatedAtAction(nameof(GetOne), new { brandId, drinkId = drink.Id }, ToResponse(projection));
         }
 
         [HttpPut("{drinkId:int}")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
         public async Task<IActionResult> Update(int brandId, int drinkId, [FromBody] DrinkUpdateRequest request)
         {
             if (!await BrandExists(brandId))
@@ -159,6 +219,7 @@ namespace EnergyRate.Controllers
             {
                 return UnprocessableEntity(new { message = "Price must be non-negative" });
             }
+
             drink.Name = request.Name;
             drink.Flavor = request.Flavor;
             drink.CaffeineMgPer100ml = request.CaffeineMgPer100ml;
@@ -169,6 +230,8 @@ namespace EnergyRate.Controllers
         }
 
         [HttpDelete("{drinkId:int}")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> Delete(int brandId, int drinkId)
         {
             if (!await BrandExists(brandId))
