@@ -1,0 +1,6 @@
+@EnergyRate_HostAddress = http://localhost:5121
+
+GET {{EnergyRate_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

@@ -1,0 +1,19 @@
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+
+# Build files
+bin/
+obj/
+
+# Local configuration and secrets
+appsettings.Local.json
+appsettings.Development.json
+.env
+
+# IDE and OS files
+.vscode/
+.DS_Store
+Thumbs.db
