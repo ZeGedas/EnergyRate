@@ -3,6 +3,8 @@ using EnergyRate.Dtos;
 using EnergyRate.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
 
 namespace EnergyRate.Controllers
 {
@@ -11,6 +13,7 @@ namespace EnergyRate.Controllers
     public class ReviewsController : ControllerBase
     {
         private readonly AppDbContext _db;
+        private int GetCurrentUserId() => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier) ?? throw new InvalidOperationException("User ID claim is missing."));
         public ReviewsController(AppDbContext db) => _db = db;
         private ReviewResponse ToResponse(Review review, int brandId) => new(
             review.Id, review.DrinkId, review.UserId, review.Rating, review.Comment, review.CreatedAt,
@@ -24,6 +27,10 @@ namespace EnergyRate.Controllers
             await _db.Drinks.AnyAsync(d => d.Id == drinkId && d.BrandId == brandId);
 
         [HttpGet]
+        [Authorize(Roles = "Admin,Member,Guest")]
+        [ProducesResponseType(typeof(PagedResult<ReviewResponse>), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
         public async Task<ActionResult<PagedResult<ReviewResponse>>> GetList(int brandId, int drinkId, [FromQuery] ReviewQuery query)
         {
             if (!await DrinkExists(brandId, drinkId))
@@ -62,6 +69,7 @@ namespace EnergyRate.Controllers
         }
 
         [HttpGet("{reviewId:int}", Name = "GetReviewById")]
+        [Authorize(Roles = "Admin,Member,Guest")]
         [ProducesResponseType(typeof(ReviewResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -84,11 +92,14 @@ namespace EnergyRate.Controllers
         }
 
         [HttpPost]
+        [Authorize(Roles = "Member")]
         [ProducesResponseType(typeof(ReviewResponse), StatusCodes.Status201Created)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
         [ProducesResponseType(StatusCodes.Status409Conflict)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
         public async Task<ActionResult<ReviewResponse>> Create(int brandId, int drinkId, [FromBody] ReviewCreateRequest request)
         {
             if (!await DrinkExists(brandId, drinkId))
@@ -99,21 +110,19 @@ namespace EnergyRate.Controllers
             {
                 return UnprocessableEntity(new { message = "Rating must be between 1 and 5." });
             }
-            if (!await _db.Users.AnyAsync(u => u.Id == request.UserId))
-            {
-                return NotFound(new { message = $"User with ID {request.UserId} not found." });
-            }
 
-            var alreadyReviewed = await _db.Reviews.AnyAsync(r => r.DrinkId == drinkId && r.UserId == request.UserId);
+            var userId = GetCurrentUserId();
+
+            var alreadyReviewed = await _db.Reviews.AnyAsync(r => r.DrinkId == drinkId && r.UserId == userId);
             if (alreadyReviewed)
             {
-                return Conflict(new { message = $"User with ID {request.UserId} has already reviewed Drink ID {drinkId}." });
+                return Conflict(new { message = $"User with ID {userId} has already reviewed Drink ID {drinkId}." });
             }
 
             var review = new Review
             {
                 DrinkId = drinkId,
-                UserId = request.UserId,
+                UserId = userId,
                 Rating = request.Rating,
                 Comment = request.Comment,
             };
@@ -123,9 +132,10 @@ namespace EnergyRate.Controllers
         }
 
         [HttpPut("{reviewId:int}")]
+        [Authorize(Roles = "Member")]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
         [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
         public async Task<ActionResult<ReviewResponse>> Update(int brandId, int drinkId, int reviewId, [FromBody] ReviewUpdateRequest request)
         {
@@ -138,6 +148,12 @@ namespace EnergyRate.Controllers
             if (review == null)
             {
                 return NotFound(new { message = $"Review with ID {reviewId} not found for Drink ID {drinkId}" });
+            }
+
+            var currentUserId = GetCurrentUserId();
+            if (review.UserId != currentUserId)
+            {
+                return Forbid();
             }
 
             if (request.Rating < 1 || request.Rating > 5)
@@ -153,8 +169,10 @@ namespace EnergyRate.Controllers
         }
 
         [HttpDelete("{reviewId:int}")]
+        [Authorize(Roles = "Member, Admin")]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
         public async Task<IActionResult> Delete(int brandId, int drinkId, int reviewId)
         {
             if (!await DrinkExists(brandId, drinkId))
@@ -166,6 +184,15 @@ namespace EnergyRate.Controllers
             {
                 return NotFound(new { message = $"Review with ID {reviewId} not found for Drink ID {drinkId}" });
             }
+
+            var currentUserId = GetCurrentUserId();
+            var isAdmin = User.IsInRole("Admin");
+
+            if(review.UserId != currentUserId && !isAdmin)
+            {
+                return Forbid();
+            }
+
             _db.Reviews.Remove(review);
             await _db.SaveChangesAsync();
             return NoContent();

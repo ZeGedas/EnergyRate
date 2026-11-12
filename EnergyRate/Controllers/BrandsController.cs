@@ -3,9 +3,7 @@ using EnergyRate.Dtos;
 using EnergyRate.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-
-
-
+using Microsoft.AspNetCore.Authorization;
 
 namespace EnergyRate.Controllers
 {
@@ -25,6 +23,7 @@ namespace EnergyRate.Controllers
             });
 
         [HttpGet]
+        [Authorize(Roles = "Admin,Member,Guest")]
         [ProducesResponseType(typeof(PagedResult<BrandResponse>), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
@@ -53,6 +52,7 @@ namespace EnergyRate.Controllers
         }
 
         [HttpGet("{brandId:int}", Name = "GetBrandById")]
+        [Authorize(Roles = "Admin,Member,Guest")]
         [ProducesResponseType(typeof(BrandResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -64,6 +64,7 @@ namespace EnergyRate.Controllers
         }
 
         [HttpPost]
+        [Authorize(Roles = "Admin")]
         [ProducesResponseType(typeof(BrandResponse), StatusCodes.Status201Created)]
         [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
         [ProducesResponseType(StatusCodes.Status409Conflict)]
@@ -92,6 +93,7 @@ namespace EnergyRate.Controllers
         }
 
         [HttpPut("{brandId:int}")]
+        [Authorize(Roles = "Admin")]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
@@ -116,6 +118,7 @@ namespace EnergyRate.Controllers
         }
 
         [HttpDelete("{brandId:int}")]
+        [Authorize(Roles = "Admin")]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> Delete(int brandId)

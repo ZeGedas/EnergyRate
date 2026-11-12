@@ -4,6 +4,7 @@ using EnergyRate.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.AspNetCore.Authorization;
 
 namespace EnergyRate.Controllers
 {
@@ -56,6 +57,7 @@ namespace EnergyRate.Controllers
         private async Task<bool> BrandExists(int brandId) => await _db.Brands.AnyAsync(b => b.Id == brandId);
 
         [HttpGet]
+        [Authorize(Roles = "Admin,Member,Guest")]
         [ProducesResponseType(typeof(PagedResult<DrinkResponse>), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -94,6 +96,7 @@ namespace EnergyRate.Controllers
         }
 
         [HttpGet("{drinkId:int}", Name = "GetDrinkById")]
+        [Authorize(Roles = "Admin,Member,Guest")]
         [ProducesResponseType(typeof(DrinkResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -115,6 +118,7 @@ namespace EnergyRate.Controllers
         }
 
         [HttpPost]
+        [Authorize(Roles = "Admin")]
         [ProducesResponseType(typeof(DrinkResponse), StatusCodes.Status201Created)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -184,6 +188,7 @@ namespace EnergyRate.Controllers
         }
 
         [HttpPut("{drinkId:int}")]
+        [Authorize(Roles = "Admin")]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -230,6 +235,7 @@ namespace EnergyRate.Controllers
         }
 
         [HttpDelete("{drinkId:int}")]
+        [Authorize(Roles = "Admin")]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> Delete(int brandId, int drinkId)

@@ -2,8 +2,9 @@
 {
     public enum UserRole
     {
-        Member,
-        Admin
+        Member = 0,
+        Admin = 1,
+        Guest = 2
     }
 
     public class User
@@ -16,6 +17,7 @@
 
         public string? RefreshToken { get; set; }
         public DateTime? RefreshTokenExpiresAt { get; set; }
+        public int TokenVersion { get; set; } = 0;
 
     }
 }

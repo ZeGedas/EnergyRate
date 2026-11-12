@@ -11,7 +11,6 @@
         );
 
     public record ReviewCreateRequest(
-        int UserId,
         int Rating,
         string? Comment
         );
